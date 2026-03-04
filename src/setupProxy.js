@@ -13,7 +13,7 @@ module.exports = function(app) {
     app.use(
       endpoint,
       createProxyMiddleware({
-        target: 'http://10.175.25.114:5000',
+        target: 'http://10.48.242.137:5000',
         changeOrigin: true,
       })
     );

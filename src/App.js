@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './App.css';
+import SecurityMonitor from './SecurityMonitor'; 
 
-// ✅ Define backend base URL here
-// You can switch easily between environments:
-const BASE_URL = 'http://10.115.90.114:5000';  // e.g., 'http://localhost:5000' or public ngrok link
+const BASE_URL = 'http://10.103.150.242:5000'; 
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('fl_token'));
@@ -36,7 +35,11 @@ function App() {
         <button onClick={handleLogout} className="logout-btn">Logout</button>
       </header>
       {role === 'ADMIN' ? <AdminDashboard token={token} /> : <HospitalDashboard token={token} />}
-      <PredictionComponent token={token} />
+      
+      {/* Move Prediction Component to bottom so it doesn't clutter Admin view */}
+      <div className="prediction-section">
+         <PredictionComponent token={token} />
+      </div>
     </div>
   );
 }
@@ -102,9 +105,11 @@ function AdminDashboard({ token }) {
   const intervalRef = useRef(null);
 
   const fetchStatus = async () => {
-    const response = await fetch(`${BASE_URL}/training-status`);
-    const data = await response.json();
-    setStatus(data);
+    try {
+      const response = await fetch(`${BASE_URL}/training-status`);
+      const data = await response.json();
+      setStatus(data);
+    } catch (e) { console.error("Status fetch failed", e); }
   };
 
   useEffect(() => {
@@ -124,22 +129,12 @@ function AdminDashboard({ token }) {
     });
   };
 
-  /*const chartData = status.accuracy_history?.map((acc, index) => ({
-    round: index + 1,
-    accuracy: parseFloat(acc.toFixed(4)),
-    loss: parseFloat(status.loss_history[index]?.toFixed(4) || 0),
-  })) || [];*/
-   const defaultAccuracy = [62.57, 66.48, 70.32, 73.95, 76.661];
+  const defaultAccuracy = [62.57, 66.48, 70.32, 73.95, 76.66];
+  const initialLoss = 1.0; 
+  const decayRate = 0.35; 
+  const defaultLoss = defaultAccuracy.map((_, i) => parseFloat((initialLoss * Math.exp(-decayRate * i)).toFixed(4)));
 
-// Generate exponential decay loss values (starting high → decreasing each round)
-const initialLoss = 1.0; // starting loss
-const decayRate = 0.35;  // higher value = faster decay
-const defaultLoss = defaultAccuracy.map((_, i) =>
-  parseFloat((initialLoss * Math.exp(-decayRate * i)).toFixed(4))
-);
-
-const chartData =
-  status.accuracy_history?.length > 0
+  const chartData = status.accuracy_history?.length > 0
     ? status.accuracy_history.map((acc, index) => ({
         round: index + 1,
         accuracy: parseFloat(acc.toFixed(4)),
@@ -147,13 +142,13 @@ const chartData =
       }))
     : defaultAccuracy.map((acc, index) => ({
         round: index + 1,
-        accuracy: parseFloat(acc.toFixed(4)),
+        accuracy: acc,
         loss: defaultLoss[index],
       }));
 
-
   return (
     <>
+      {/* 1. Control Panel */}
       <div className="card">
         <h2>Admin Controls</h2>
         <div className="hyperparameters">
@@ -164,6 +159,8 @@ const chartData =
           Start New Global Training
         </button>
       </div>
+
+      {/* 2. Status Panel */}
       <div className="card">
         <h2>Live Global Status</h2>
         <p><strong>Overall Status:</strong> {status.status}</p>
@@ -172,11 +169,150 @@ const chartData =
         )}
         <p><strong>Current Round:</strong> {status.current_round} / {status.total_rounds}</p>
       </div>
+
+      {/* 3. Graph Panel */}
       <div className="card">
         <h2>Live Training Performance</h2>
         {chartData.length > 0 ? <PerformanceChart data={chartData} /> : <p>Waiting for training to start...</p>}
       </div>
+
+      {/* 4. NEW: Security Monitor (Detailed Logs) */}
+      <SecurityMonitor token={token} />
+
+      {/* 5. Blockchain Ledger Panel */}
+      <BlockchainAuditLog token={token} />
     </>
+  );
+}
+
+// Blockchain Audit Log Component
+function BlockchainAuditLog({ token }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [integrityStatus, setIntegrityStatus] = useState(null); 
+
+  const fetchLogs = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${BASE_URL}/admin/audit-log`, {
+        method: 'GET',
+        headers: { 'x-access-token': token },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setLogs(data.reverse()); 
+      }
+    } catch (error) {
+      console.error("Blockchain fetch failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/admin/verify-integrity`, {
+        method: 'GET',
+        headers: { 'x-access-token': token },
+      });
+      const data = await response.json();
+      setIntegrityStatus(data.status); 
+      alert(data.message);            
+    } catch (error) {
+      console.error("Verification failed", error);
+      alert("Verification failed. Server might be down.");
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 5000); 
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleForceRefresh = async () => {
+    setLoading(true);
+    try {
+      const refreshResponse = await fetch(`${BASE_URL}/admin/refresh-chain`, {
+        method: 'POST',
+        headers: { 'x-access-token': token },
+      });
+      
+      if (refreshResponse.ok) {
+        await fetchLogs();
+        alert("Blockchain reloaded from Database!");
+      } else {
+        alert("Failed to refresh server cache.");
+      }
+    } catch (error) {
+      console.error("Refresh failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="card blockchain-card">
+      <div className="card-header">
+        <h2>🛡️ Immutable Blockchain Audit Trail</h2>
+        <div style={{ display: 'flex', gap: '10px' }}>
+           <button 
+             onClick={handleVerify} 
+             style={{
+               backgroundColor: integrityStatus === 'COMPROMISED' ? '#c0392b' : '#27ae60', 
+               color: 'white', 
+               border: 'none', 
+               padding: '8px 15px', 
+               borderRadius: '5px', 
+               cursor: 'pointer',
+               fontWeight: 'bold'
+             }}
+           >
+             {integrityStatus === 'COMPROMISED' ? '❌ TAMPERING DETECTED' : '🔍 Verify Integrity'}
+           </button>
+           <button onClick={fetchLogs} className="refresh-btn">
+             {loading ? '...' : '🔄 Refresh Ledger'}
+           </button>
+           {/* The Refresh Button */}
+            <button onClick={handleForceRefresh} className="refresh-btn">
+              {loading ? '...' : '🔄 Force Reload from DB'}
+            </button>
+        </div>
+      </div>
+      
+      <div className="table-container">
+        <table className="audit-table">
+          <thead>
+            <tr>
+              <th>Block #</th>
+              <th>Time</th>
+              <th>Client ID</th>
+              <th>Status</th>
+              <th>Digital Signature (Hash)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.length === 0 ? (
+              <tr><td colSpan="5" style={{textAlign:'center', padding:'20px', color: '#888'}}>No blocks mined yet. Start training!</td></tr>
+            ) : (
+              logs.map((log) => (
+                <tr key={log.index}>
+                  <td>#{log.index}</td>
+                  <td>{log.timestamp}</td>
+                  <td><strong>{log.client}</strong></td>
+                  <td>
+                    <span className={`status-badge ${log.status.includes('REJECTED') ? 'rejected' : 'accepted'}`}>
+                      {log.status}
+                    </span>
+                  </td>
+                  <td><code className="hash-code">{log.short_hash}</code></td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="ledger-footer">* This ledger is cryptographically linked. Any tampering breaks the chain.</p>
+    </div>
   );
 }
 
@@ -222,7 +358,6 @@ function PredictionComponent({ token }) {
   const [selectedXaiItem, setSelectedXaiItem] = useState(null);
   const [loadingXai, setLoadingXai] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -267,7 +402,7 @@ function PredictionComponent({ token }) {
         const data = await response.json();
         results.push({
           name: file.name,
-          fileObject: file, // Store file object for XAI
+          fileObject: file, 
           imageUrl: URL.createObjectURL(file),
           prediction: data.prediction,
           confidence: data.confidence,
@@ -281,6 +416,7 @@ function PredictionComponent({ token }) {
       setIsLoading(false);
     }
   };
+
   const handleExplain = async (item) => {
     setSelectedXaiItem(item);
     setShowModal(true);
@@ -313,6 +449,7 @@ function PredictionComponent({ token }) {
     setShowModal(false);
     setXaiImage(null);
   };
+  
   const predictionCounts = predictions.reduce((acc, p) => {
     acc[p.prediction] = (acc[p.prediction] || 0) + 1;
     return acc;
@@ -356,7 +493,6 @@ function PredictionComponent({ token }) {
           <div className="result-grid">
             {predictions.map((p, idx) => (
               <div key={idx} className="result-card" onClick={() => handleExplain(p)} style={{cursor: 'pointer'}}>
-                {/* Added 'explain-overlay' for hover effect */}
                 <div className="image-wrapper">
                     <img src={p.imageUrl} alt={p.name} className="preview" />
                     <div className="overlay">🔍 Explain AI</div>
@@ -402,8 +538,6 @@ function PredictionComponent({ token }) {
           </div>
         </div>
       )}
-
-      
     </div>
   );
 }
