@@ -102,7 +102,31 @@ function AdminDashboard({ token }) {
   const [status, setStatus] = useState({});
   const [numRounds, setNumRounds] = useState(10);
   const [clientsPerRound, setClientsPerRound] = useState(2);
+  
+  // 🚨 NEW STATE FOR MODEL SELECTION
+  const [availableModels, setAvailableModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState("latest");
+  
   const intervalRef = useRef(null);
+
+  // 🚨 FETCH THE LIST OF MODELS
+  // 🚨 1. UPDATE THIS FUNCTION (Added console logs for debugging)
+  const fetchModels = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/admin/models`, {
+        headers: { 'x-access-token': token }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        console.log("✅ Models received from server:", data.models); // See it in browser console!
+        setAvailableModels(data.models);
+      } else {
+        console.error("❌ Server rejected model fetch. Status:", response.status);
+      }
+    } catch(e) { 
+      console.error("❌ Failed to reach backend for models", e); 
+    }
+  };
 
   const fetchStatus = async () => {
     try {
@@ -112,11 +136,7 @@ function AdminDashboard({ token }) {
     } catch (e) { console.error("Status fetch failed", e); }
   };
 
-  useEffect(() => {
-    fetchStatus();
-    intervalRef.current = setInterval(fetchStatus, 3000);
-    return () => clearInterval(intervalRef.current);
-  }, []);
+
 
   const handleStartTraining = async () => {
     await fetch(`${BASE_URL}/start-training`, {
@@ -124,7 +144,8 @@ function AdminDashboard({ token }) {
       headers: { 'Content-Type': 'application/json', 'x-access-token': token },
       body: JSON.stringify({
         total_rounds: parseInt(numRounds),
-        clients_per_round: parseInt(clientsPerRound)
+        clients_per_round: parseInt(clientsPerRound),
+        base_model: selectedModel // 🚨 SEND SELECTED MODEL
       }),
     });
   };
@@ -148,12 +169,35 @@ function AdminDashboard({ token }) {
 
   return (
     <>
+      {status.status === 'COMPROMISED (LOCKDOWN)' && (
+        <div style={{ backgroundColor: '#ef4444', color: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px', textAlign: 'center', border: '3px solid #7f1d1d' }}>
+          <h2 style={{ margin: '0 0 10px 0' }}>🛑 SECURITY LOCKDOWN IN EFFECT 🛑</h2>
+          <p style={{ margin: '0', fontSize: '1.1em' }}>Database tampering detected. All AI aggregation halted to protect patient safety. Check Audit Ledger.</p>
+        </div>
+      )}
+
       {/* 1. Control Panel */}
       <div className="card">
         <h2>Admin Controls</h2>
-        <div className="hyperparameters">
-          <label>Rounds: <input type="number" value={numRounds} onChange={e => setNumRounds(e.target.value)} /></label>
-          <label>Clients/Round: <input type="number" value={clientsPerRound} onChange={e => setClientsPerRound(e.target.value)} /></label>
+        <div className="hyperparameters" style={{ display: 'flex', gap: '15px', marginBottom: '15px', flexWrap: 'wrap' }}>
+          <label>Rounds: <br/><input type="number" value={numRounds} onChange={e => setNumRounds(e.target.value)} style={{width: '80px', padding: '5px'}}/></label>
+          <label>Clients/Round: <br/><input type="number" value={clientsPerRound} onChange={e => setClientsPerRound(e.target.value)} style={{width: '80px', padding: '5px'}}/></label>
+          
+          {/* 🚨 THE NEW DROPDOWN MENU 🚨 */}
+          {/* 🚨 OPTIMIZED DROPDOWN MENU 🚨 */}
+          <label>Start From Model: <br/>
+            <select 
+              value={selectedModel} 
+              onFocus={fetchModels} // <--- Fetches fresh models ONLY when clicked!
+              onChange={e => setSelectedModel(e.target.value)}
+              style={{ padding: '6px', borderRadius: '5px', backgroundColor: '#334155', color: 'white', border: '1px solid #475569' }}
+            >
+              <option value="latest">Latest Checkpoint (Auto)</option>
+              {availableModels.map((modelName) => (
+                <option key={modelName} value={modelName}>{modelName}</option>
+              ))}
+            </select>
+          </label>
         </div>
         <button onClick={handleStartTraining} disabled={status.status === 'TRAINING' || status.status === 'WAITING_FOR_CLIENTS'}>
           Start New Global Training
@@ -272,7 +316,6 @@ function BlockchainAuditLog({ token }) {
            <button onClick={fetchLogs} className="refresh-btn">
              {loading ? '...' : '🔄 Refresh Ledger'}
            </button>
-           {/* The Refresh Button */}
             <button onClick={handleForceRefresh} className="refresh-btn">
               {loading ? '...' : '🔄 Force Reload from DB'}
             </button>
