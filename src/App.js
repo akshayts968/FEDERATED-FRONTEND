@@ -118,7 +118,7 @@ function AdminDashboard({ token }) {
       });
       if (response.ok) {
         const data = await response.json();
-        console.log("✅ Models received from server:", data.models); // See it in browser console!
+        //console.log("✅ Models received from server:", data.models); // See it in browser console!
         setAvailableModels(data.models);
       } else {
         console.error("❌ Server rejected model fetch. Status:", response.status);
@@ -136,7 +136,16 @@ function AdminDashboard({ token }) {
     } catch (e) { console.error("Status fetch failed", e); }
   };
 
-
+useEffect(() => {
+    fetchStatus();
+    fetchModels(); 
+    
+    intervalRef.current = setInterval(() => {
+      fetchStatus();
+    }, 3000);
+    
+    return () => clearInterval(intervalRef.current);
+  }, []);
 
   const handleStartTraining = async () => {
     await fetch(`${BASE_URL}/start-training`, {
@@ -185,17 +194,24 @@ function AdminDashboard({ token }) {
           
           {/* 🚨 THE NEW DROPDOWN MENU 🚨 */}
           {/* 🚨 OPTIMIZED DROPDOWN MENU 🚨 */}
+          {/* 🚨 UPDATED DROPDOWN MENU WITH "SCRATCH" OPTION 🚨 */}
           <label>Start From Model: <br/>
             <select 
               value={selectedModel} 
-              onFocus={fetchModels} // <--- Fetches fresh models ONLY when clicked!
+              onFocus={fetchModels}
               onChange={e => setSelectedModel(e.target.value)}
               style={{ padding: '6px', borderRadius: '5px', backgroundColor: '#334155', color: 'white', border: '1px solid #475569' }}
             >
               <option value="latest">Latest Checkpoint (Auto)</option>
-              {availableModels.map((modelName) => (
-                <option key={modelName} value={modelName}>{modelName}</option>
-              ))}
+              <option value="scratch">✨ Start from Scratch (Empty Model)</option>
+              
+              {availableModels.length > 0 && (
+                <optgroup label="Historical Checkpoints">
+                  {availableModels.map((modelName) => (
+                    <option key={modelName} value={modelName}>{modelName}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </label>
         </div>
