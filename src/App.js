@@ -2,25 +2,31 @@ import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './App.css';
 import SecurityMonitor from './SecurityMonitor'; 
-
-const BASE_URL = 'http://10.103.150.242:5000'; 
+import ClientManagementPanel from './ClientManage'
+import './ClientManage.css'
+const BASE_URL = 'https://10.103.150.242:5000'; 
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('fl_token'));
   const [role, setRole] = useState(localStorage.getItem('fl_role'));
+  const [userStatus, setUserStatus] = useState(localStorage.getItem('fl_status'));
 
-  const handleLoginSuccess = (newToken, newRole) => {
+  const handleLoginSuccess = (newToken, newRole, newStatus) => {
     localStorage.setItem('fl_token', newToken);
     localStorage.setItem('fl_role', newRole);
+    localStorage.setItem('fl_status', newStatus);
     setToken(newToken);
     setRole(newRole);
+    setUserStatus(newStatus);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('fl_token');
     localStorage.removeItem('fl_role');
+    localStorage.removeItem('fl_status');
     setToken(null);
     setRole(null);
+    setUserStatus(null);
   };
 
   if (!token) {
@@ -31,12 +37,11 @@ function App() {
     <div className="dashboard">
       <header className="dashboard-header">
         <h1>Federated Learning Dashboard</h1>
-        <p>Logged in as: <strong>{role}</strong></p>
+        <p>Logged in as: <strong>{role}</strong> {role === 'HOSPITAL' && `| Status: ${userStatus}`}</p>
         <button onClick={handleLogout} className="logout-btn">Logout</button>
       </header>
-      {role === 'ADMIN' ? <AdminDashboard token={token} /> : <HospitalDashboard token={token} />}
+      {role === 'ADMIN' ? <AdminDashboard token={token} /> : <HospitalDashboard token={token} currentStatus={userStatus} setStatus={setUserStatus} />}
       
-      {/* Move Prediction Component to bottom so it doesn't clutter Admin view */}
       <div className="prediction-section">
          <PredictionComponent token={token} />
       </div>
@@ -45,35 +50,115 @@ function App() {
 }
 
 function LoginPage({ onLoginSuccess }) {
+  const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  
+  // OTP States
+  const [needsOtp, setNeedsOtp] = useState(false);
+  const [otp, setOtp] = useState('');
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    const endpoint = isLogin ? '/login' : '/register';
+    const payload = isLogin ? { username, password } : { username, password, email };
+
     try {
-      const response = await fetch(`${BASE_URL}/login`, {
+      const response = await fetch(`${BASE_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(payload),
       });
       const data = await response.json();
-      if (data.token) {
-        onLoginSuccess(data.token, data.role);
+      
+      if (isLogin) {
+        // Handle Login
+        if (response.ok && data.token) {
+          onLoginSuccess(data.token, data.role, data.status);
+        } else {
+          alert(data.message || 'Login failed!');
+        }
       } else {
-        alert(data.message || 'Login failed!');
+        // Handle Register
+        if (response.ok && data.requires_otp) {
+          setNeedsOtp(true); // Switch to OTP View
+          alert(data.message);
+        } else {
+          alert(data.message || 'Registration failed!');
+        }
       }
     } catch (error) {
       alert('Could not connect to the server: ' + error);
     }
   };
 
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetch(`${BASE_URL}/verify-register-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, otp }),
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        alert(data.message);
+        // Reset states and switch to Login screen
+        setNeedsOtp(false);
+        setIsLogin(true);
+        setOtp('');
+        setPassword(''); // Clear password for security
+      } else {
+        alert(data.message || 'OTP Verification failed!');
+      }
+    } catch (error) {
+      alert('Could not connect to the server: ' + error);
+    }
+  };
+
+  // If we are in the OTP verification phase
+  if (needsOtp) {
+    return (
+      <div className="login-container">
+        <form onSubmit={handleVerifyOtp} className="login-form">
+          <h2>Verify Your Email</h2>
+          <p style={{ textAlign: 'center', marginBottom: '15px' }}>
+            We sent a 6-digit code to <strong>{email}</strong>.
+          </p>
+          <input 
+            type="text" 
+            maxLength="6"
+            value={otp} 
+            onChange={(e) => setOtp(e.target.value)} 
+            placeholder="Enter OTP" 
+            required 
+            style={{ letterSpacing: '2px', textAlign: 'center', fontSize: '1.2rem' }}
+          />
+          <button type="submit">Complete Registration</button>
+          <p onClick={() => {setNeedsOtp(false); setIsLogin(true);}} style={{cursor: 'pointer', color: '#e74c3c', marginTop: '10px', textAlign: 'center'}}>
+            Cancel / Back to Login
+          </p>
+        </form>
+      </div>
+    );
+  }
+
+  // Standard Login/Register form
   return (
     <div className="login-container">
-      <form onSubmit={handleLogin} className="login-form">
-        <h2>FL System Login</h2>
+      <form onSubmit={handleSubmit} className="login-form">
+        <h2>{isLogin ? 'FL System Login' : 'Create Account'}</h2>
+        {!isLogin && (
+           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email Address" required />
+        )}
         <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" required />
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required />
-        <button type="submit">Login</button>
+        <button type="submit">{isLogin ? 'Login' : 'Register'}</button>
+        <p onClick={() => { setIsLogin(!isLogin); setUsername(''); setPassword(''); setEmail(''); }} style={{cursor: 'pointer', color: '#3498db', marginTop: '10px', textAlign: 'center'}}>
+          {isLogin ? "Don't have an account? Register here" : "Already have an account? Log in"}
+        </p>
       </form>
     </div>
   );
@@ -99,34 +184,11 @@ function PerformanceChart({ data }) {
 }
 
 function AdminDashboard({ token }) {
+  const [activeTab, setActiveTab] = useState('training'); // New state for tabs
   const [status, setStatus] = useState({});
   const [numRounds, setNumRounds] = useState(10);
   const [clientsPerRound, setClientsPerRound] = useState(2);
-  
-  // 🚨 NEW STATE FOR MODEL SELECTION
-  const [availableModels, setAvailableModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState("latest");
-  
   const intervalRef = useRef(null);
-
-  // 🚨 FETCH THE LIST OF MODELS
-  // 🚨 1. UPDATE THIS FUNCTION (Added console logs for debugging)
-  const fetchModels = async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/admin/models`, {
-        headers: { 'x-access-token': token }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        //console.log("✅ Models received from server:", data.models); // See it in browser console!
-        setAvailableModels(data.models);
-      } else {
-        console.error("❌ Server rejected model fetch. Status:", response.status);
-      }
-    } catch(e) { 
-      console.error("❌ Failed to reach backend for models", e); 
-    }
-  };
 
   const fetchStatus = async () => {
     try {
@@ -136,14 +198,9 @@ function AdminDashboard({ token }) {
     } catch (e) { console.error("Status fetch failed", e); }
   };
 
-useEffect(() => {
+  useEffect(() => {
     fetchStatus();
-    fetchModels(); 
-    
-    intervalRef.current = setInterval(() => {
-      fetchStatus();
-    }, 3000);
-    
+    intervalRef.current = setInterval(fetchStatus, 3000);
     return () => clearInterval(intervalRef.current);
   }, []);
 
@@ -153,8 +210,7 @@ useEffect(() => {
       headers: { 'Content-Type': 'application/json', 'x-access-token': token },
       body: JSON.stringify({
         total_rounds: parseInt(numRounds),
-        clients_per_round: parseInt(clientsPerRound),
-        base_model: selectedModel // 🚨 SEND SELECTED MODEL
+        clients_per_round: parseInt(clientsPerRound)
       }),
     });
   };
@@ -178,69 +234,56 @@ useEffect(() => {
 
   return (
     <>
-      {status.status === 'COMPROMISED (LOCKDOWN)' && (
-        <div style={{ backgroundColor: '#ef4444', color: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px', textAlign: 'center', border: '3px solid #7f1d1d' }}>
-          <h2 style={{ margin: '0 0 10px 0' }}>🛑 SECURITY LOCKDOWN IN EFFECT 🛑</h2>
-          <p style={{ margin: '0', fontSize: '1.1em' }}>Database tampering detected. All AI aggregation halted to protect patient safety. Check Audit Ledger.</p>
-        </div>
-      )}
-
-      {/* 1. Control Panel */}
-      <div className="card">
-        <h2>Admin Controls</h2>
-        <div className="hyperparameters" style={{ display: 'flex', gap: '15px', marginBottom: '15px', flexWrap: 'wrap' }}>
-          <label>Rounds: <br/><input type="number" value={numRounds} onChange={e => setNumRounds(e.target.value)} style={{width: '80px', padding: '5px'}}/></label>
-          <label>Clients/Round: <br/><input type="number" value={clientsPerRound} onChange={e => setClientsPerRound(e.target.value)} style={{width: '80px', padding: '5px'}}/></label>
-          
-          {/* 🚨 THE NEW DROPDOWN MENU 🚨 */}
-          {/* 🚨 OPTIMIZED DROPDOWN MENU 🚨 */}
-          {/* 🚨 UPDATED DROPDOWN MENU WITH "SCRATCH" OPTION 🚨 */}
-          <label>Start From Model: <br/>
-            <select 
-              value={selectedModel} 
-              onFocus={fetchModels}
-              onChange={e => setSelectedModel(e.target.value)}
-              style={{ padding: '6px', borderRadius: '5px', backgroundColor: '#334155', color: 'white', border: '1px solid #475569' }}
-            >
-              <option value="latest">Latest Checkpoint (Auto)</option>
-              <option value="scratch">✨ Start from Scratch (Empty Model)</option>
-              
-              {availableModels.length > 0 && (
-                <optgroup label="Historical Checkpoints">
-                  {availableModels.map((modelName) => (
-                    <option key={modelName} value={modelName}>{modelName}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </label>
-        </div>
-        <button onClick={handleStartTraining} disabled={status.status === 'TRAINING' || status.status === 'WAITING_FOR_CLIENTS'}>
-          Start New Global Training
+      {/* Navigation Tabs */}
+     <div className="admin-tabs">
+        <button 
+          onClick={() => setActiveTab('training')}
+          className={`tab-btn ${activeTab === 'training' ? 'active' : 'inactive'}`}>
+          📈 Training Dashboard
+        </button>
+        <button 
+          onClick={() => setActiveTab('clients')}
+          className={`tab-btn ${activeTab === 'clients' ? 'active' : 'inactive'}`}>
+          👥 Manage Clients
         </button>
       </div>
 
-      {/* 2. Status Panel */}
-      <div className="card">
-        <h2>Live Global Status</h2>
-        <p><strong>Overall Status:</strong> {status.status}</p>
-        {status.status === 'WAITING_FOR_CLIENTS' && (
-          <p><strong>Connected Hospitals:</strong> {status.connected_clients?.length || 0} / {status.required_clients_count}</p>
-        )}
-        <p><strong>Current Round:</strong> {status.current_round} / {status.total_rounds}</p>
-      </div>
+      {/* Conditionally Render Content Based on Active Tab */}
+      {activeTab === 'training' ? (
+        <>
+          <div className="card">
+            <h2>Admin Controls</h2>
+            <div className="hyperparameters">
+              <label>Rounds: <input type="number" value={numRounds} onChange={e => setNumRounds(e.target.value)} /></label>
+              <label>Clients/Round: <input type="number" value={clientsPerRound} onChange={e => setClientsPerRound(e.target.value)} /></label>
+            </div>
+            <button onClick={handleStartTraining} disabled={status.status === 'TRAINING' || status.status === 'WAITING_FOR_CLIENTS'}>
+              Start New Global Training
+            </button>
+          </div>
 
-      {/* 3. Graph Panel */}
-      <div className="card">
-        <h2>Live Training Performance</h2>
-        {chartData.length > 0 ? <PerformanceChart data={chartData} /> : <p>Waiting for training to start...</p>}
-      </div>
+          <AdminAuthPanel token={token} />
 
-      {/* 4. NEW: Security Monitor (Detailed Logs) */}
-      <SecurityMonitor token={token} />
+          <div className="card">
+            <h2>Live Global Status</h2>
+            <p><strong>Overall Status:</strong> {status.status}</p>
+            {status.status === 'WAITING_FOR_CLIENTS' && (
+              <p><strong>Connected Hospitals:</strong> {status.connected_clients?.length || 0} / {clientsPerRound}</p>
+            )}
+            <p><strong>Current Round:</strong> {status.current_round} / {status.total_rounds}</p>
+          </div>
 
-      {/* 5. Blockchain Ledger Panel */}
-      <BlockchainAuditLog token={token} />
+          <div className="card">
+            <h2>Live Training Performance</h2>
+            {chartData.length > 0 ? <PerformanceChart data={chartData} /> : <p>Waiting for training to start...</p>}
+          </div>
+
+          <SecurityMonitor token={token} />
+          <BlockchainAuditLog token={token} />
+        </>
+      ) : (
+        <ClientManagementPanel token={token} />
+      )}
     </>
   );
 }
@@ -332,6 +375,7 @@ function BlockchainAuditLog({ token }) {
            <button onClick={fetchLogs} className="refresh-btn">
              {loading ? '...' : '🔄 Refresh Ledger'}
            </button>
+           {/* The Refresh Button */}
             <button onClick={handleForceRefresh} className="refresh-btn">
               {loading ? '...' : '🔄 Force Reload from DB'}
             </button>
@@ -375,9 +419,26 @@ function BlockchainAuditLog({ token }) {
   );
 }
 
-function HospitalDashboard({ token }) {
+function HospitalDashboard({ token, currentStatus, setStatus }) {
   const [isConnected, setIsConnected] = useState(false);
   const intervalRef = useRef(null);
+
+  const handleRequestAccess = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/request-access`, {
+        method: 'POST',
+        headers: { 'x-access-token': token },
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setStatus('PENDING');
+        localStorage.setItem('fl_status', 'PENDING');
+        alert(data.message);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleCheckIn = async () => {
     await fetch(`${BASE_URL}/check-in`, {
@@ -399,13 +460,106 @@ function HospitalDashboard({ token }) {
   return (
     <div className="card">
       <h2>Hospital Node Control</h2>
-      <p>Connect this system to the federation to participate in training.</p>
-      <button onClick={handleConnect} disabled={isConnected}>
-        {isConnected ? 'Connected to Federation' : 'Connect to Federation'}
-      </button>
+      
+      {currentStatus === 'UNAUTHORIZED' && (
+        <div>
+          <p>You must request authorization from the Admin to join the federation.</p>
+          <button onClick={handleRequestAccess}>Request Access to Federation</button>
+        </div>
+      )}
+
+      {currentStatus === 'PENDING' && (
+        <p style={{color: '#f39c12', fontWeight: 'bold'}}>Your access request is pending Admin approval. Please check back later.</p>
+      )}
+
+      {currentStatus === 'REJECTED' && (
+        <p style={{color: '#e74c3c', fontWeight: 'bold'}}>Your request to join the federation was rejected.</p>
+      )}
+
+      {currentStatus === 'APPROVED' && (
+        <div>
+          <p>You are authorized! Connect this system to participate in training.</p>
+          <button onClick={handleConnect} disabled={isConnected}>
+            {isConnected ? 'Connected to Federation' : 'Connect to Federation'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
+
+
+
+
+
+// Add this new component
+function AdminAuthPanel({ token }) {
+  const [pendingUsers, setPendingUsers] = useState([]);
+
+  const fetchPending = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/admin/pending-users`, {
+        headers: { 'x-access-token': token },
+      });
+      if (response.ok) {
+        setPendingUsers(await response.json());
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleAction = async (username, status) => {
+    try {
+      const response = await fetch(`${BASE_URL}/admin/authorize-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-access-token': token },
+        body: JSON.stringify({ username, status }),
+      });
+      if (response.ok) {
+        alert(`User ${username} ${status}`);
+        fetchPending(); // Refresh list
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => {
+    fetchPending();
+    const interval = setInterval(fetchPending, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (pendingUsers.length === 0) return null; // Hide if no requests
+
+  return (
+    <div className="card" style={{ borderColor: '#f39c12', borderWidth: '2px', borderStyle: 'solid' }}>
+      <h2>🔔 Pending Authorization Requests</h2>
+      <table className="audit-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pendingUsers.map(user => (
+            <tr key={user.username}>
+              <td>{user.username}</td>
+              <td>{user.email}</td>
+              <td>
+                <button onClick={() => handleAction(user.username, 'APPROVED')} style={{backgroundColor: '#27ae60', marginRight: '10px'}}>Accept</button>
+                <button onClick={() => handleAction(user.username, 'REJECTED')} style={{backgroundColor: '#c0392b'}}>Reject</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+
+
+
 
 function PredictionComponent({ token }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -459,6 +613,8 @@ function PredictionComponent({ token }) {
         });
 
         const data = await response.json();
+        console.log(data,data.prediction,data.confidence, data.model_used,
+         + "this is data")
         results.push({
           name: file.name,
           fileObject: file, 
