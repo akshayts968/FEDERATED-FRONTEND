@@ -4,8 +4,8 @@ import './App.css';
 import SecurityMonitor from './SecurityMonitor'; 
 import ClientManagementPanel from './ClientManage'
 import './ClientManage.css'
-const BASE_URL = 'https://10.103.150.242:5000'; 
-
+const BASE_URL = process.env.REACT_APP_BASE_URL;
+console.log("BASE_URL =", BASE_URL);
 function App() {
   const [token, setToken] = useState(localStorage.getItem('fl_token'));
   const [role, setRole] = useState(localStorage.getItem('fl_role'));
@@ -166,17 +166,23 @@ function LoginPage({ onLoginSuccess }) {
 
 function PerformanceChart({ data }) {
   return (
-    <div style={{ width: '100%', height: 300 }}>
+    <div style={{ width: '100%', height: 350 }}>
       <ResponsiveContainer>
-        <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="round" />
-          <YAxis yAxisId="left" label={{ value: 'Loss', angle: -90, position: 'insideLeft' }} />
-          <YAxis yAxisId="right" orientation="right" label={{ value: 'Accuracy', angle: 90, position: 'insideRight' }} />
-          <Tooltip />
-          <Legend />
-          <Line yAxisId="left" type="monotone" dataKey="loss" stroke="#8884d8" activeDot={{ r: 8 }} />
-          <Line yAxisId="right" type="monotone" dataKey="accuracy" stroke="#82ca9d" />
+        <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="round" label={{ value: 'Round #', position: 'insideBottom', offset: -5 }} />
+          
+          {/* Left Axis: Accuracy */}
+          <YAxis yAxisId="left" domain={[0, 100]} label={{ value: 'Accuracy (%)', angle: -90, position: 'insideLeft' }} />
+          
+          {/* Right Axis: Weight Distance (Drift) */}
+          <YAxis yAxisId="right" orientation="right" label={{ value: 'Weight Drift (Distance)', angle: 90, position: 'insideRight' }} />
+          
+          <Tooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #ccc' }} />
+          <Legend verticalAlign="top" height={36}/>
+          
+          <Line yAxisId="left" type="monotone" dataKey="accuracy" stroke="#2ecc71" strokeWidth={3} dot={{ r: 4 }} name="Global Accuracy" />
+          <Line yAxisId="right" type="monotone" dataKey="distance" stroke="#e67e22" strokeWidth={2} strokeDasharray="5 5" name="Weight Drift" />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -186,6 +192,7 @@ function PerformanceChart({ data }) {
 function AdminDashboard({ token }) {
   const [activeTab, setActiveTab] = useState('training'); // New state for tabs
   const [status, setStatus] = useState({});
+  const [chartView, setChartView] = useState('security');
   const [numRounds, setNumRounds] = useState(10);
   const [clientsPerRound, setClientsPerRound] = useState(2);
   const intervalRef = useRef(null);
@@ -215,23 +222,91 @@ function AdminDashboard({ token }) {
     });
   };
 
-  const defaultAccuracy = [62.57, 66.48, 70.32, 73.95, 76.66];
-  const initialLoss = 1.0; 
-  const decayRate = 0.35; 
-  const defaultLoss = defaultAccuracy.map((_, i) => parseFloat((initialLoss * Math.exp(-decayRate * i)).toFixed(4)));
+// --- Inside AdminDashboard function ---
 
-  const chartData = status.accuracy_history?.length > 0
-    ? status.accuracy_history.map((acc, index) => ({
-        round: index + 1,
-        accuracy: parseFloat(acc.toFixed(4)),
-        loss: parseFloat(status.loss_history[index]?.toFixed(4) || 0),
-      }))
-    : defaultAccuracy.map((acc, index) => ({
-        round: index + 1,
-        accuracy: acc,
-        loss: defaultLoss[index],
-      }));
+const defaultAccuracy = [62.57, 66.48, 70.32, 73.95, 76.66];
+const initialLoss = 1.0; 
+const decayRate = 0.35; 
+const defaultLoss = defaultAccuracy.map((_, i) => parseFloat((initialLoss * Math.exp(-decayRate * i)).toFixed(4)));
+// Simulated distance for the default view (showing low, stable drift)
+const defaultDistance = [12.4, 15.2, 14.8, 13.1, 12.5];
 
+const chartData = status.accuracy_history?.length > 0
+  ? status.accuracy_history.map((acc, index) => ({
+      round: index + 1,
+      accuracy: parseFloat(acc.toFixed(2)),
+      loss: parseFloat(status.loss_history[index]?.toFixed(4) || 0),
+      distance: parseFloat(status.distance_history?.[index]?.toFixed(2) || 0),
+    }))
+  : defaultAccuracy.map((acc, index) => ({
+      round: index + 1,
+      accuracy: acc,
+      loss: defaultLoss[index],
+      distance: defaultDistance[index], // Fallback simulated drift
+    }));
+
+
+function PerformanceChart({ data, mode }) {
+  return (
+    <div style={{ width: '100%', height: 350 }}>
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="round" />
+          
+          {/* Left Axis is ALWAYS Accuracy */}
+          <YAxis yAxisId="left" domain={[0, 100]} stroke="#27ae60" label={{ value: 'Accuracy (%)', angle: -90, position: 'insideLeft' }} />
+          
+          {/* Right Axis changes label based on mode */}
+          <YAxis 
+            yAxisId="right" 
+            orientation="right" 
+            stroke={mode === 'security' ? '#e67e22' : '#8884d8'} 
+            label={{ value: mode === 'security' ? 'Weight Drift' : 'Loss', angle: 90, position: 'insideRight' }} 
+          />
+          
+          <Tooltip />
+          <Legend verticalAlign="top" height={36}/>
+          
+          {/* Primary Line: Accuracy (Always visible) */}
+          <Line 
+            yAxisId="left" 
+            type="monotone" 
+            dataKey="accuracy" 
+            stroke="#27ae60" 
+            strokeWidth={3} 
+            name="Global Accuracy" 
+          />
+          
+          {/* Conditional Line: Security Mode */}
+          {mode === 'security' && (
+            <Line 
+              yAxisId="right" 
+              type="monotone" 
+              dataKey="distance" 
+              stroke="#e67e22" 
+              strokeWidth={2} 
+              strokeDasharray="5 5" 
+              name="Weight Drift (Security)" 
+            />
+          )}
+
+          {/* Conditional Line: Performance Mode */}
+          {mode === 'performance' && (
+            <Line 
+              yAxisId="right" 
+              type="monotone" 
+              dataKey="loss" 
+              stroke="#8884d8" 
+              strokeWidth={2} 
+              name="Training Loss" 
+            />
+          )}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
   return (
     <>
       {/* Navigation Tabs */}
@@ -274,8 +349,31 @@ function AdminDashboard({ token }) {
           </div>
 
           <div className="card">
-            <h2>Live Training Performance</h2>
-            {chartData.length > 0 ? <PerformanceChart data={chartData} /> : <p>Waiting for training to start...</p>}
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2>Live Training Analytics</h2>
+              
+              {/* 🔄 Toggle Button Group */}
+              <div className="toggle-group">
+                <button 
+                  onClick={() => setChartView('security')} 
+                  className={`toggle-btn ${chartView === 'security' ? 'active' : ''}`}
+                >
+                  🛡️ Security (Drift)
+                </button>
+                <button 
+                  onClick={() => setChartView('performance')} 
+                  className={`toggle-btn ${chartView === 'performance' ? 'active' : ''}`}
+                >
+                  📉 Performance (Loss)
+                </button>
+              </div>
+            </div>
+
+            {chartData.length > 0 ? (
+              <PerformanceChart data={chartData} mode={chartView} />
+            ) : (
+              <p>Waiting for training to start...</p>
+            )}
           </div>
 
           <SecurityMonitor token={token} />

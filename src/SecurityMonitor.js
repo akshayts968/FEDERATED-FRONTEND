@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const BASE_URL = 'https://10.103.150.242:5000'; 
+const BASE_URL = process.env.REACT_APP_BASE_URL;
 
 const SecurityMonitor = ({ token }) => {
   const [logs, setLogs] = useState([]);

@@ -957,6 +957,20 @@ body {
   font-family: 'Courier New', monospace;
 }
 
+
+
+
+
+
+.card-pulse {
+    border-left: 5px solid #e67e22; /* Warning orange for the drift chart */
+    background: linear-gradient(to right, #ffffff, #fffaf5);
+}
+
+.recharts-line-name-column {
+    font-weight: bold;
+    color: #333;
+}
 /* =========================================
    🛡️ SECURITY MONITOR DASHBOARD STYLES
    ========================================= */
@@ -1134,4 +1148,36 @@ body {
 .alert-icon {
   font-size: 1.2rem;
   margin-left: 5px;
+}
+
+
+
+
+.toggle-group {
+  display: flex;
+  background: #f1f2f6;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.toggle-btn {
+  border: none;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 6px;
+  background: transparent;
+  transition: all 0.3s ease;
+  color: #57606f;
+}
+
+.toggle-btn.active {
+  background: #ffffff;
+  color: #2f3542;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  font-weight: bold;
+}
+
+.toggle-btn:hover:not(.active) {
+  background: #e1e2e6;
 }
