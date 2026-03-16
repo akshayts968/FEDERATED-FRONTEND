@@ -195,6 +195,11 @@ function AdminDashboard({ token }) {
   const [chartView, setChartView] = useState('security');
   const [numRounds, setNumRounds] = useState(10);
   const [clientsPerRound, setClientsPerRound] = useState(2);
+  
+  // --- NEW: States for the dropdown menu ---
+  const [availableModels, setAvailableModels] = useState([]);
+  const [trainingModelChoice, setTrainingModelChoice] = useState('latest'); 
+  
   const intervalRef = useRef(null);
 
   const fetchStatus = async () => {
@@ -204,6 +209,24 @@ function AdminDashboard({ token }) {
       setStatus(data);
     } catch (e) { console.error("Status fetch failed", e); }
   };
+
+  // --- NEW: Fetch the list of saved models when the dashboard loads ---
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/predict`, {
+          method: "POST",
+          headers: { "x-access-token": token },
+          body: new FormData(), 
+        });
+        const data = await response.json();
+        setAvailableModels(data.model || []);
+      } catch (err) {
+        console.error("Error fetching model versions:", err);
+      }
+    };
+    fetchModels();
+  }, [token]);
 
   useEffect(() => {
     fetchStatus();
@@ -217,7 +240,8 @@ function AdminDashboard({ token }) {
       headers: { 'Content-Type': 'application/json', 'x-access-token': token },
       body: JSON.stringify({
         total_rounds: parseInt(numRounds),
-        clients_per_round: parseInt(clientsPerRound)
+        clients_per_round: parseInt(clientsPerRound),
+        model_choice: trainingModelChoice // --- NEW: Sends your dropdown choice to the backend ---
       }),
     });
   };
@@ -328,10 +352,27 @@ function PerformanceChart({ data, mode }) {
         <>
           <div className="card">
             <h2>Admin Controls</h2>
-            <div className="hyperparameters">
-              <label>Rounds: <input type="number" value={numRounds} onChange={e => setNumRounds(e.target.value)} /></label>
-              <label>Clients/Round: <input type="number" value={clientsPerRound} onChange={e => setClientsPerRound(e.target.value)} /></label>
+            
+            {/* --- NEW: The Dropdown menu is injected right here --- */}
+            <div className="hyperparameters" style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginBottom: '15px' }}>
+              <label>Rounds: <br/><input type="number" value={numRounds} onChange={e => setNumRounds(e.target.value)} style={{width: '100px'}}/></label>
+              <label>Clients/Round: <br/><input type="number" value={clientsPerRound} onChange={e => setClientsPerRound(e.target.value)} style={{width: '100px'}} /></label>
+              
+              <label style={{ flexGrow: 1 }}>Base Model: <br/>
+                <select 
+                  value={trainingModelChoice} 
+                  onChange={e => setTrainingModelChoice(e.target.value)}
+                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                >
+                  <option value="latest">🔄 Auto-Resume Latest</option>
+                  <option value="new">✨ Start Fresh (Blank Model)</option>
+                  {availableModels.map(m => (
+                    <option key={m.filename} value={m.filename}>Resume: {m.filename}</option>
+                  ))}
+                </select>
+              </label>
             </div>
+            
             <button onClick={handleStartTraining} disabled={status.status === 'TRAINING' || status.status === 'WAITING_FOR_CLIENTS'}>
               Start New Global Training
             </button>
