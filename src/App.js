@@ -248,10 +248,17 @@ function AdminDashboard({ token }) {
 
 // --- Inside AdminDashboard function ---
 
-const defaultAccuracy = [62.57, 66.48, 70.32, 73.95, 76.66];
+// Updated accuracy curve starting at ~60 and ending at 85.69
+const defaultAccuracy = [60.50, 68.20, 76.40, 82.15, 85.69];
+
 const initialLoss = 1.0; 
-const decayRate = 0.35; 
-const defaultLoss = defaultAccuracy.map((_, i) => parseFloat((initialLoss * Math.exp(-decayRate * i)).toFixed(4)));
+// Increased decay rate so loss drops more realistically alongside the higher accuracy
+const decayRate = 0.45; 
+
+const defaultLoss = defaultAccuracy.map((_, i) => 
+  parseFloat((initialLoss * Math.exp(-decayRate * i)).toFixed(4))
+);
+
 // Simulated distance for the default view (showing low, stable drift)
 const defaultDistance = [12.4, 15.2, 14.8, 13.1, 12.5];
 
