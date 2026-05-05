@@ -842,7 +842,7 @@ function PredictionComponent({ token }) {
 
       {predictions.length > 0 && (
         <div className="results-container">
-          <h3>🩺 Detailed Results (Click image for AI Explanation)</h3>
+          <h3>🩺 Detailed Results</h3>
           <h3>📊 Summary</h3>
           <div className="counts">
             {Object.entries(predictionCounts).map(([label, count]) => (
