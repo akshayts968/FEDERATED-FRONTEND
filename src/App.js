@@ -478,6 +478,7 @@ function BlockchainAuditLog({ token }) {
     fetchLogs();
     const interval = setInterval(fetchLogs, 5000); 
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleForceRefresh = async () => {
@@ -672,6 +673,7 @@ function AdminAuthPanel({ token }) {
     fetchPending();
     const interval = setInterval(fetchPending, 10000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (pendingUsers.length === 0) return null; // Hide if no requests

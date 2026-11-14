@@ -21,6 +21,7 @@ export default function ClientManagementPanel({ token }) {
 
   useEffect(() => {
     fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleStatusChange = async (username, status) => {
