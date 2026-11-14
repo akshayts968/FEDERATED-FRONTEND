@@ -90,9 +90,31 @@ export default function ClientManagementPanel({ token }) {
                 </td>
                 <td>
                   {user.status === 'APPROVED' ? (
-                    <button onClick={() => handleStatusChange(user.username, 'UNAUTHORIZED')} className="action-btn btn-revoke">
-                      Revoke Access
-                    </button>
+                    <>
+                      <button onClick={() => handleStatusChange(user.username, 'UNAUTHORIZED')} className="action-btn btn-revoke">
+                        Revoke Access
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          const res = await fetch(`${BASE_URL}/admin/download-kit/${user.username}`, {
+                            headers: { 'x-access-token': token }
+                          });
+                          if (!res.ok) { alert('Failed to download kit'); return; }
+                          const blob = await res.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `${user.username}_onboarding_kit.zip`;
+                          document.body.appendChild(a);
+                          a.click();
+                          a.remove();
+                        }} 
+                        className="action-btn"
+                        style={{ backgroundColor: '#3498db', color: '#fff', marginLeft: '5px' }}
+                      >
+                        📥 Download Kit
+                      </button>
+                    </>
                   ) : (
                     <button onClick={() => handleStatusChange(user.username, 'APPROVED')} className="action-btn btn-authorize">
                       Authorize
