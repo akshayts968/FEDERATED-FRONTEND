@@ -7,7 +7,7 @@ const BASE_URL = API_BASE_URL;
 function AdminDashboard({ token }) {
   const [status, setStatus] = useState({});
   const [numRounds, setNumRounds] = useState(10);
-  const [clientsPerRound, setClientsPerRound] = useState(2);
+  const [clientsPerRound, setClientsPerRound] = useState(1);
   const intervalRef = useRef(null);
 
   const fetchStatus = async () => {
