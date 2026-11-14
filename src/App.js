@@ -626,10 +626,32 @@ function HospitalDashboard({ token, currentStatus, setStatus }) {
 
       {currentStatus === 'APPROVED' && (
         <div>
-          <p>You are authorized! Connect this system to participate in training.</p>
-          <button onClick={handleConnect} disabled={isConnected}>
-            {isConnected ? 'Connected to Federation' : 'Connect to Federation'}
-          </button>
+          <p>You are authorized! Download your kit below or connect this system to participate in training.</p>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+            <button 
+              onClick={async () => {
+                const res = await fetch(`${BASE_URL}/client/download-kit`, {
+                  headers: { 'x-access-token': token }
+                });
+                if (!res.ok) { alert('Failed to download kit. Please contact admin.'); return; }
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `hospital_onboarding_kit.zip`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+              }}
+              className="action-btn"
+              style={{ backgroundColor: '#2ecc71', color: '#fff', padding: '10px 15px', fontWeight: 'bold' }}
+            >
+              📥 Download My Hospital Training Kit
+            </button>
+            <button onClick={handleConnect} disabled={isConnected}>
+              {isConnected ? 'Connected to Federation' : 'Connect to Federation'}
+            </button>
+          </div>
         </div>
       )}
     </div>
